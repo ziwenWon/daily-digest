@@ -69,13 +69,10 @@ def get_entry_date(entry):
     return None
 
 def format_date(dt):
-    """E.g. 'Apr 24' or 'Apr 24, 2025'."""
+    """Return full date e.g. 'Apr 22, 2026'."""
     if dt is None:
         return ''
-    now = datetime.now(timezone.utc)
-    if dt.year == now.year:
-        return dt.strftime('%-m/%-d')       # e.g. 4/24
-    return dt.strftime('%-m/%-d/%Y')        # e.g. 4/24/2025
+    return dt.strftime('%b %d, %Y')
 
 def days_ago(dt):
     if dt is None:
@@ -247,12 +244,7 @@ def build_foryou_js(foryou_items):
     """Serialise FORYOU articles to inline JS."""
     lines = []
     for item in foryou_items:
-        age_label = ''
-        if item['age'] == 0:        age_label = 'Today'
-        elif item['age'] == 1:      age_label = 'Yesterday'
-        elif item['age'] <= 7:      age_label = f"{item['age']}d ago"
-        elif item['date']:          age_label = item['date']
-
+        pub_date = item['date'] if item['date'] else ''
         tag = item.get('tag', 'tech')
         lines.append(
             f"  {{p:5,tag:'{js_escape(tag)}',cat:'{js_escape(item['cat'])}',"
@@ -260,7 +252,7 @@ def build_foryou_js(foryou_items):
             f"url:'{js_escape(item['url'])}',"
             f"title:'{js_escape(item['title'])}',"
             f"summary:'{js_escape(item['summary'])}',"
-            f"age:'{js_escape(age_label)}',"
+            f"pubDate:'{js_escape(pub_date)}',"
             f"keyword:'{js_escape(item['keyword'])}'}},"
         )
     return '\n'.join(lines)
@@ -287,22 +279,14 @@ def update_foryou_html(foryou_items):
 def build_news_js(all_news, today_str):
     lines = [f"  // Last updated: {today_str}"]
     for item in all_news:
-        age_label = ''
-        if item['age'] == 0:
-            age_label = 'Today'
-        elif item['age'] == 1:
-            age_label = 'Yesterday'
-        elif item['age'] <= 7:
-            age_label = f"{item['age']}d ago"
-        elif item['date']:
-            age_label = item['date']
-
+        # Always show the actual publication date (never relative "Xd ago")
+        pub_date = item['date'] if item['date'] else ''
         lines.append(
             f"  {{p:{item['p']},tag:'{js_escape(item['tag'])}',cat:'{js_escape(item['cat'])}',src:'{js_escape(item['src'])}',"
             f"url:'{js_escape(item['url'])}',"
             f"title:'{js_escape(item['title'])}',"
             f"summary:'{js_escape(item['summary'])}',"
-            f"age:'{js_escape(age_label)}'}},"
+            f"pubDate:'{js_escape(pub_date)}'}},"
         )
     return '\n'.join(lines)
 
