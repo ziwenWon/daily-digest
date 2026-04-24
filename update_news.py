@@ -143,32 +143,38 @@ def fetch_all_entries(cat):
     entries.sort(key=lambda e: e['dt'] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return entries
 
-def pick_articles(entries, max_articles=5):
+def pick_articles(entries):
     """
-    Tiered selection:
-      Tier 1: ≤ 7 days  (fresh news)
-      Tier 2: ≤ 30 days (still relevant)
-      Tier 3: any       (last-resort fallback)
-    Fill up to max_articles, tier-by-tier.
+    Balanced tiered selection — 6 articles per category:
+      Tier 1: up to 3 from ≤  7 days  (fresh this week)
+      Tier 2: up to 2 from ≤ 30 days  (recent this month)
+      Tier 3: up to 1 from ≤ 90 days  (important but older)
+    Unused quota rolls over to the next tier.
     """
-    result = []
-    seen_urls = set()
+    QUOTAS  = [(7, 3), (30, 2), (90, 1)]
+    result  = []
+    seen    = set()
+    surplus = 0
 
     def add(e):
-        if e['url'] not in seen_urls:
-            seen_urls.add(e['url'])
+        if e['url'] not in seen:
+            seen.add(e['url'])
             result.append(e)
+            return True
+        return False
 
-    for tier_days in (7, 30, 3650):
+    for max_days, quota in QUOTAS:
+        want  = quota + surplus
+        added = 0
         for e in entries:
-            if len(result) >= max_articles:
+            if added >= want:
                 break
-            if e['age'] <= tier_days:
-                add(e)
-        if len(result) >= max_articles:
-            break
+            if e['age'] <= max_days and e['url'] not in seen:
+                if add(e):
+                    added += 1
+        surplus = want - added   # carry leftover to next tier
 
-    return result[:max_articles]
+    return result
 
 # ── Inject into index.html ────────────────────────────────────
 def build_news_js(all_news, today_str):
