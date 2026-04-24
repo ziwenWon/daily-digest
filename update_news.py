@@ -6,6 +6,7 @@ Priority: last 7 days → last 30 days → any (fallback).
 """
 
 import re
+import json
 import html as html_lib
 from datetime import datetime, timezone, timedelta
 
@@ -176,6 +177,112 @@ def pick_articles(entries):
 
     return result
 
+# ── User interests ───────────────────────────────────────────
+def read_user_interests():
+    """Read user_interests.json committed by the user after exporting from the site."""
+    try:
+        with open('user_interests.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        keywords  = [k for k in data.get('keywords', []) if k]
+        dismissed = set(data.get('dismissed', []))
+        print(f'📋 Loaded {len(keywords)} interest keywords from user_interests.json')
+        return keywords, dismissed
+    except FileNotFoundError:
+        print('ℹ️  No user_interests.json — skipping FORYOU personalisation')
+        return [], set()
+    except Exception as exc:
+        print(f'⚠️  Could not read user_interests.json: {exc}')
+        return [], set()
+
+def build_foryou_articles(all_fetched_entries, keywords, dismissed):
+    """
+    For each keyword: pick up to 6 articles with tiered recency:
+      3 from ≤ 7 days   (fresh)
+      2 from 8–30 days  (recent)
+      1 from 31–90 days (archival)
+    Articles are not repeated across keywords.
+    """
+    # Flatten + deduplicate all fetched entries
+    seen_urls = set()
+    pool = []
+    for entries in all_fetched_entries.values():
+        for e in entries:
+            if e['url'] not in seen_urls:
+                seen_urls.add(e['url'])
+                pool.append(e)
+
+    pool.sort(key=lambda e: e['dt'] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+    foryou   = []
+    used_urls = set()
+
+    for keyword in keywords:
+        if keyword.lower() in {d.lower() for d in dismissed}:
+            continue
+        kw_lower = keyword.lower()
+        matches  = [
+            e for e in pool
+            if kw_lower in (e['title'] + ' ' + e['summary'] + ' ' + e['cat']).lower()
+            and e['url'] not in used_urls
+        ]
+
+        tier1 = [e for e in matches if e['age'] <= 7][:3]
+        tier2 = [e for e in matches if 8  <= e['age'] <= 30][:2]
+        tier3 = [e for e in matches if 31 <= e['age'] <= 90][:1]
+        picked = tier1 + tier2 + tier3
+
+        for e in picked:
+            used_urls.add(e['url'])
+            row = dict(e)
+            row['keyword'] = keyword
+            foryou.append(row)
+
+        flag = '🟢' if picked else '⚪'
+        print(f'  {flag} "{keyword}" → {len(picked)} articles '
+              f'(fresh:{len(tier1)} recent:{len(tier2)} archival:{len(tier3)})')
+
+    return foryou
+
+def build_foryou_js(foryou_items):
+    """Serialise FORYOU articles to inline JS."""
+    lines = []
+    for item in foryou_items:
+        age_label = ''
+        if item['age'] == 0:        age_label = 'Today'
+        elif item['age'] == 1:      age_label = 'Yesterday'
+        elif item['age'] <= 7:      age_label = f"{item['age']}d ago"
+        elif item['date']:          age_label = item['date']
+
+        tag = item.get('tag', 'tech')
+        lines.append(
+            f"  {{p:5,tag:'{js_escape(tag)}',cat:'{js_escape(item['cat'])}',"
+            f"src:'{js_escape(item['src'])}',"
+            f"url:'{js_escape(item['url'])}',"
+            f"title:'{js_escape(item['title'])}',"
+            f"summary:'{js_escape(item['summary'])}',"
+            f"age:'{js_escape(age_label)}',"
+            f"keyword:'{js_escape(item['keyword'])}'}},"
+        )
+    return '\n'.join(lines)
+
+def update_foryou_html(foryou_items):
+    """Inject FORYOU array between @@FORYOU markers in index.html."""
+    with open('index.html', 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    foryou_js = build_foryou_js(foryou_items)
+    new_block  = f'// @@FORYOU_START@@\nconst FORYOU = [\n{foryou_js}\n];\n// @@FORYOU_END@@'
+    pattern    = r'// @@FORYOU_START@@.*?// @@FORYOU_END@@'
+    new_content = re.sub(pattern, new_block, content, flags=re.DOTALL)
+
+    if new_content == content:
+        print('⚠️  FORYOU markers not found in index.html — skipping')
+        return False
+
+    with open('index.html', 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    return True
+
 # ── Inject into index.html ────────────────────────────────────
 def build_news_js(all_news, today_str):
     lines = [f"  // Last updated: {today_str}"]
@@ -227,13 +334,15 @@ def main():
     today_str = datetime.utcnow().strftime('%B %d, %Y')
     print(f'📰 Daily Digest Update — {today_str}\n')
 
-    all_news = []
+    all_news     = []
+    all_fetched  = {}   # p → full entry list (used for FORYOU matching)
+
     for cat in CATEGORIES:
         print(f'Fetching {cat["cat"]}…')
         entries  = fetch_all_entries(cat)
         articles = pick_articles(entries)
+        all_fetched[cat['p']] = entries   # keep full pool
 
-        # Log freshness for transparency
         for a in articles:
             flag = '🟢' if a['age'] <= 7 else ('🟡' if a['age'] <= 30 else '🔴')
             print(f'  {flag} [{a["age"]:>3}d] {a["title"][:60]}')
@@ -244,14 +353,28 @@ def main():
         print('\n❌ No articles fetched. Skipping update.')
         return
 
-    fresh   = sum(1 for a in all_news if a['age'] <= 7)
-    stale   = sum(1 for a in all_news if a['age'] > 30)
+    fresh  = sum(1 for a in all_news if a['age'] <= 7)
+    stale  = sum(1 for a in all_news if a['age'] > 30)
     print(f'\nTotal: {len(all_news)} articles  |  🟢 ≤7d: {fresh}  |  🔴 >30d: {stale}')
 
     if update_html(all_news, today_str):
-        print('✅ index.html updated successfully')
+        print('✅ NEWS section updated successfully')
     else:
-        print('❌ Failed to update index.html')
+        print('❌ Failed to update NEWS section')
+
+    # ── Personalised FORYOU feed ──────────────────────────────
+    keywords, dismissed = read_user_interests()
+    if keywords:
+        print(f'\n🎯 Building FORYOU feed for {len(keywords)} keywords…')
+        foryou = build_foryou_articles(all_fetched, keywords, dismissed)
+        print(f'   Total FORYOU articles: {len(foryou)}')
+        if update_foryou_html(foryou):
+            print('✅ FORYOU section updated successfully')
+        else:
+            print('❌ Failed to update FORYOU section')
+    else:
+        # Clear any stale FORYOU content
+        update_foryou_html([])
 
 if __name__ == '__main__':
     main()
