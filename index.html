@@ -166,6 +166,61 @@
       padding: 20px 0 4px;
     }
     .update-bar a { color: #9ca3af; }
+
+    /* ── Keyword filter bar ── */
+    .filter-bar {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 18px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 10px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .filter-icon { font-size: 15px; color: #9ca3af; flex-shrink: 0; }
+    .filter-bar input {
+      flex: 1; border: none; outline: none;
+      font-size: 14px; font-family: inherit; color: #111827;
+      background: transparent;
+    }
+    .filter-bar input::placeholder { color: #c4c4cc; }
+    .filter-clear {
+      font-size: 12px; color: #9ca3af; cursor: pointer;
+      padding: 3px 8px; border-radius: 6px;
+      background: none; border: none; font-family: inherit;
+      transition: background 0.1s, color 0.1s;
+      display: none; white-space: nowrap;
+    }
+    .filter-clear.visible { display: inline; }
+    .filter-clear:hover { background: #f3f4f6; color: #374151; }
+    .no-results {
+      text-align: center; padding: 40px 20px;
+      color: #9ca3af; font-size: 14px;
+    }
+
+    /* ── Star / Favorites ── */
+    .star-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 17px; padding: 0 3px; line-height: 1;
+      color: #d1d5db;
+      transition: color 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    .star-btn:hover { color: #f59e0b; transform: scale(1.2); }
+    .star-btn.starred { color: #f59e0b; }
+
+    /* Favorites empty state */
+    .faves-empty {
+      text-align: center; padding: 60px 20px; color: #9ca3af;
+    }
+    .faves-empty .big-icon { font-size: 44px; margin-bottom: 14px; }
+    .faves-empty p { font-size: 14px; line-height: 1.7; }
+
+    /* Keyword highlight */
+    mark.kw-match {
+      background: #fef9c3; color: inherit;
+      border-radius: 3px; padding: 0 2px;
+    }
   </style>
 </head>
 <body>
@@ -183,13 +238,20 @@
   <div class="tab" data-tab="1">📈 Business &amp; Finance</div>
   <div class="tab" data-tab="2">🧬 Biotech</div>
   <div class="tab" data-tab="3">✨ Med Aesthetics</div>
+  <div class="tab" data-tab="4">⭐ Favorites</div>
 </div>
 
 <div class="main">
+  <div class="filter-bar" id="filterBar">
+    <span class="filter-icon">🔍</span>
+    <input id="filterInput" type="text" placeholder="Filter by keyword… e.g. FDA, KRAS, Nvidia, GLP-1" />
+    <button class="filter-clear" id="filterClear">✕ Clear</button>
+  </div>
   <div id="panel-0" class="panel active"></div>
   <div id="panel-1" class="panel"></div>
   <div id="panel-2" class="panel"></div>
   <div id="panel-3" class="panel"></div>
+  <div id="panel-4" class="panel"></div>
   <div class="update-bar">
     Last updated: <span id="lastUpdated">April 24, 2026</span>
     &nbsp;·&nbsp; Click a card to mark as read
@@ -199,31 +261,97 @@
 <script>
 // @@NEWS_START@@
 const NEWS = [
-  // Last updated: April 24, 2026
-  {p:0,tag:'tech',cat:'Tech & AI',src:'AI | The Verge',url:'https://www.theverge.com/ai-artificial-intelligence/918035/deepseek-preview-v4-ai-model',title:'China’s DeepSeek previews new AI model a year after jolting US rivals',summary:'Chinese AI company DeepSeek released a preview of its hotly anticipated next-generation AI model V4 on Friday, saying that the open-source model can compete with leading closed-source systems from US rivals including…',age:'Today'},
-  {p:0,tag:'tech',cat:'Tech & AI',src:'AI | The Verge',url:'https://www.theverge.com/gadgets/918016/prestigious-photo-contest-answers-what-is-a-photo',title:'Prestigious photo contest answers ‘what is a photo?’',summary:'We love to muse over how "real" photography is defined here at The Verge now that generative AI is so prolific, and the World Press Photo competition might have the answer. The prestigious award celebrates the best of…',age:'Today'},
-  {p:0,tag:'tech',cat:'Tech & AI',src:'MIT Technology Review',url:'https://www.technologyreview.com/2026/04/24/1136352/health-care-ai-dont-know-actually-helps-patients/',title:'Health-care AI is here. We don’t know if it actually helps patients.',summary:'I don’t need to tell you that AI is everywhere. Or that it is being used, increasingly, in hospitals. Doctors are using AI to help them with notetaking. AI-based tools are trawling through patient records, flagging…',age:'Today'},
-  {p:0,tag:'tech',cat:'Tech & AI',src:'TechCrunch',url:'https://techcrunch.com/2026/04/23/porsche-is-adding-an-all-electric-cayenne-coupe-to-its-lineup/',title:'Porsche is adding an all-electric Cayenne coupe to its lineup',summary:'Porsche will start selling the Cayenne Coupe Electric in late summer.',age:'Today'},
-  {p:0,tag:'tech',cat:'Tech & AI',src:'TechCrunch',url:'https://techcrunch.com/2026/04/23/bob-iger-rejoins-thrive-capital-as-advisor-after-disney-exit/',title:'Bob Iger rejoins Thrive Capital as advisor after Disney exit',summary:'The former Disney CEO hold a stake in Thrive, and has previously held the role of the venture partner at the firm.',age:'Today'},
-  {p:1,tag:'business',cat:'Business',src:'Business News',url:'https://www.cnbc.com/2026/04/23/nike-job-cuts-layoffs.html',title:'Nike cuts 1,400 roles in second round of layoffs this year',summary:'Nike announced 1,400 layoffs, primarily in its technology department, on Thursday after cutting 775 jobs in January.',age:'Today'},
-  {p:1,tag:'business',cat:'Business',src:'Business News',url:'https://www.cnbc.com/2026/04/24/new-york-pied-a-terre-tax.html',title:'New York\'s pied-a-terre tax sets up legal fight over values',summary:'NYC\'s property tax system undervalues co-ops and condos, so experts said the city will have to come up with a new system for valuing high-end second homes.',age:'Today'},
-  {p:1,tag:'business',cat:'Business',src:'Business News',url:'https://www.cnbc.com/2026/04/23/luxury-real-estate.html',title:'What $1 million buys you in real estate around the world',summary:'Luxury real estate in most major markets around the world continues to become more expensive, as the wealthy grow wealthier and more mobile.',age:'Today'},
-  {p:1,tag:'business',cat:'Business',src:'NYT > Business',url:'https://www.nytimes.com/video/business/100000010852324/whos-getting-a-tariff-refund.html',title:'Who’s Getting a Tariff Refund?',summary:'Following a Supreme Court ruling that struck down several Trump administration tariffs, importers have begun applying for their share of $166 billion in refunds. As our economic policy reporter Tony Romm explains…',age:'Today'},
-  {p:1,tag:'business',cat:'Business',src:'NYT > Business',url:'https://www.nytimes.com/2026/04/24/business/cohere-aleph-alpha-ai-merger.html',title:'A.I. Start-Ups From Canada and Germany Merge to Take On Silicon Valley',summary:'Cohere is acquiring Aleph Alpha in a deal aimed at customers uneasy about the dominance of American companies in artificial intelligence.',age:'Today'},
-  {p:2,tag:'biotech',cat:'Biotech',src:'STAT',url:'https://www.statnews.com/2026/04/24/science-journal-retractions-highlight-guest-editor-special-edition-problem/?utm_campaign=rss',title:'Growing use of guest editors has turned some journals into a ‘playground of bad science’',summary:'The problematic use of guest editors was spotlighted last week when a genetics journal retracted nearly an entire special issue.',age:'Today'},
-  {p:2,tag:'biotech',cat:'Biotech',src:'STAT',url:'https://www.statnews.com/2026/04/24/local-news-crisis-health-science-reporters-public-health/?utm_campaign=rss',title:'Opinion: The local news crisis is also a public health crisis',summary:'Health and science reporting is often treated as optional coverage. It is anything but.',age:'Today'},
-  {p:2,tag:'biotech',cat:'Biotech',src:'STAT',url:'https://www.statnews.com/2026/04/24/white-house-boosts-psychedelic-treatments-status-report-alex-hogan/?utm_campaign=rss',title:'Psychedelics get a boost from the White House',summary:'In this week’s STATus Report, host Alex Hogan chats with STAT Washington correspondent Daniel Payne about Trump\'s psychedelics EO.',age:'Today'},
-  {p:2,tag:'biotech',cat:'Biotech',src:'STAT',url:'https://www.statnews.com/2026/04/24/medical-school-late-in-life-np-to-md/?utm_campaign=rss',title:'Opinion: I started medical school at 69 and will begin residency at 72. Here’s what I learned',summary:'Starting residency at 72 isn’t for the faint of heart. But that’s what Dawn Zuidegeest-Craft is doing.',age:'Today'},
-  {p:2,tag:'biotech',cat:'Biotech',src:'Biotechnology : nature.com subject feeds',url:'https://www.nature.com/articles/s44222-026-00438-2',title:'Engineered cells as programmable mRNA delivery vehicles',summary:'Engineered cells as programmable mRNA delivery vehicles',age:'Today'},
-  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'TheIndustry.beauty',url:'https://theindustry.beauty/the-interview-ila-skin-founder-denise-leicester-on-creating-ila-regenx-and-the-future-of-regenerative-wellbeing/?utm_source=rss&utm_medium=rss&utm_campaign=the-interview-ila-skin-founder-denise-leicester-on-creating-ila-regenx-and-the-future-of-regenerative-wellbeing',title:'The Interview: ilā Wellness founder Denise Leicester on creating ilā RegenX and the future of regenerative wellbeing',summary:'Denise Leicester is the founder of ilā Wellness and the visionary behind wellness atelier ila RegenX. In this interview, Denise tells us about her new wellness space, ilā RegenX, and the unique treatments on offer. … ...',age:'Today'},
-  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'TheIndustry.beauty',url:'https://theindustry.beauty/how-founder-led-beauty-is-driving-deeper-brand-engagement/?utm_source=rss&utm_medium=rss&utm_campaign=how-founder-led-beauty-is-driving-deeper-brand-engagement',title:'How founder-led beauty is driving deeper brand engagement',summary:'New data reveals the growing influence of female founders in driving brand engagement. Here\'s how...',age:'Today'},
-  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'TheIndustry.beauty',url:'https://theindustry.beauty/editors-picks-new-launches-from-mai-nami-saltair-hello-klean-and-more/?utm_source=rss&utm_medium=rss&utm_campaign=editors-picks-new-launches-from-mai-nami-saltair-hello-klean-and-more',title:'Editors\' Picks: New launches from Mai Nami, Saltair, Hello Klean and more...',summary:'Here are the top beauty launch picks of the week from TheIndustry.beauty team.',age:'Today'},
-  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'TheIndustry.beauty',url:'https://theindustry.beauty/wellness-brand-elevate-selects-selfridges-for-second-smoothie-bar/?utm_source=rss&utm_medium=rss&utm_campaign=wellness-brand-elevate-selects-selfridges-for-second-smoothie-bar',title:'Wellness brand Elevate selects Selfridges for second smoothie bar',summary:'Functional smoothie bar Elevate is set to open at Selfridges London on 24 April, bringing its wellness-focused concept to The Foodhall.',age:'Today'},
-  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'TheIndustry.beauty',url:'https://theindustry.beauty/cosmetic-stores-report-strong-first-quarter/?utm_source=rss&utm_medium=rss&utm_campaign=cosmetic-stores-report-strong-first-quarter',title:'Beauty stores report \'strong\' first quarter',summary:'Cosmetics and toiletry stores experienced a "strong" first quarter (from January to March 2026), driven by new product launches, compared with Q4 2025, according to the latest Office for National Statistics (ONS) retail…',age:'Today'},
+  // Tech & AI
+  { p:0, tag:'tech', cat:'Tech & AI', src:'SiliconANGLE',
+    url:'https://siliconangle.com/2026/04/22/google-unveils-new-tpus-power-next-wave-ai-training-inference/',
+    title:'Google Unveils TPU 8t & TPU 8i Chips at Cloud Next 2026',
+    summary:"Google's new eighth-generation TPU 8t and TPU 8i chips target AI training and inference, mounting a direct challenge to Nvidia's dominance." },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'Fortune',
+    url:'https://fortune.com/2026/04/22/spacex-strikes-60-billion-deal-cursor/',
+    title:'SpaceX and Cursor Strike $60B AI Coding Deal',
+    summary:'SpaceX and Cursor signed a $10B AI coding collaboration using the Colossus supercomputer, with SpaceX retaining a $60B acquisition option.' },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'TechCrunch',
+    url:'https://techcrunch.com/2026/04/22/exclusive-google-deepens-thinking-machines-lab-ties-with-new-multi-billion-dollar-deal/',
+    title:"Google Signs Multibillion-Dollar Deal with Mira Murati's Thinking Machines Lab",
+    summary:"Google deepened its AI infrastructure bet with a multibillion-dollar cloud deal with Mira Murati's Thinking Machines Lab, powered by Nvidia GB300 chips." },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'UN News',
+    url:'https://news.un.org/en/story/2026/04/1167361',
+    title:'Geoffrey Hinton Calls for Urgent AI Regulation at UN Summit',
+    summary:'Nobel laureate Geoffrey Hinton warned at a UN conference that AI without governance is a "very fast car with no steering wheel," urging immediate action.' },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'PwC',
+    url:'https://www.pwc.com/gx/en/news-room/press-releases/2026/pwc-2026-ai-performance-study.html',
+    title:'PwC: Just 20% of Companies Are Capturing 75% of AI Economic Gains',
+    summary:"PwC's 2026 study found a narrow group of growth-focused firms pulling far ahead of peers in converting AI investment into measurable financial returns." },
+
+  // Business & Finance
+  { p:1, tag:'business', cat:'Business', src:'WEF',
+    url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+    title:'IMF Cuts 2026 Global Growth Forecast to 3.1% Over War Risks',
+    summary:'The IMF trimmed its 2026 global growth forecast from 3.4% to 3.1%, blaming Middle East conflict and persistent supply chain fragility.' },
+  { p:1, tag:'business', cat:'Business', src:'CNBC',
+    url:'https://www.cnbc.com/2026/04/22/stock-market-today-live-updates.html',
+    title:'S&P 500 Slips 0.41%; Oil Surges Above $96 on Middle East Tensions',
+    summary:'U.S. stocks retreated April 23 with the S&P 500 off 0.41% and Nasdaq down 0.89% as geopolitical tension pushed WTI crude above $96.50.' },
+  { p:1, tag:'business', cat:'Business', src:'CNBC',
+    url:'https://www.cnbc.com/2026/04/22/stock-market-today-live-updates.html',
+    title:'Goldman Sachs Delivers Its Best Quarter in Years on Trading Surge',
+    summary:'Major U.S. banks reported strong Q1 2026 results, led by Goldman Sachs posting its best quarter in years and Morgan Stanley surging on trading revenue.' },
+  { p:1, tag:'business', cat:'Business', src:'WEF',
+    url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+    title:'Brent Crude Tops $105 as Middle East Conflict Tightens Energy Markets',
+    summary:'Brent crude surged 3.5% above $105 per barrel as intensifying Middle East conflict compressed global energy supply and stoked inflation fears.' },
+  { p:1, tag:'business', cat:'Business', src:'Financial Stability Board',
+    url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+    title:'FSB Warns Geopolitical Conflict Poses Serious Financial Stability Risk',
+    summary:'The FSB flagged that Middle East warfare, stretched asset valuations, and elevated non-bank leverage together pose a growing systemic threat.' },
+
+  // Biotech
+  { p:2, tag:'biotech', cat:'Biotech', src:'BioPharma Dive',
+    url:'https://www.biopharmadive.com/news/tortugas-biotech-startup-jonas-robichaud-hansoh-eisai/818076/',
+    title:'Tortugas Neuroscience Launches from Stealth with $106M',
+    summary:'Tortugas Neuroscience debuted with $106M in funding and CEO Jeff Jonas, bringing two brain-targeted drug candidates in-licensed from Hansoh and Eisai.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Lambda Biologics',
+    url:'https://afs.lambda-bio.com/blog/top-biotech-news-22-april-2026/',
+    title:'Revolution Medicine Presents Phase 3 Data on Pancreatic Cancer Drug Daraxonrasib',
+    summary:'Revolution Medicine presented pivotal Phase 3 results for its KRAS inhibitor daraxonrasib at AACR 2026, advancing its pancreatic cancer pipeline.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Lambda Biologics',
+    url:'https://afs.lambda-bio.com/blog/top-biotech-news-22-april-2026/',
+    title:'BioNTech & DualityBio ADC Shows Strong Efficacy in Endometrial Cancer',
+    summary:'Updated Phase 1/2 data showed trastuzumab pamirtecan achieving significant clinical activity in HER2-expressing recurrent endometrial cancer patients.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Fierce Biotech',
+    url:'https://www.fiercebiotech.com/',
+    title:'Storm Therapeutics Closes $56M Series C for METTL3 Inhibitor STC-15',
+    summary:'Storm Therapeutics raised $56M in Series C funding to advance STC-15, its first-in-class RNA methylation inhibitor, into mid-stage cancer trials.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Fierce Biotech',
+    url:'https://www.fiercebiotech.com/',
+    title:'Wave Life Sciences Expands RNA Editing Pipeline into Obesity and Rare Disease',
+    summary:'Wave Life Sciences reported 2026 pipeline progress, extending its RNA editing and interference platform into obesity and new genetic rare disease programs.' },
+
+  // Medical Aesthetics
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'Yahoo Finance',
+    url:'https://finance.yahoo.com/sectors/healthcare/articles/beauty-health-company-announces-corporate-120000695.html',
+    title:'Beauty Health Company Rebrands as SkinHealth Systems',
+    summary:'The Beauty Health Company rebranded as SkinHealth Systems Inc., repositioning itself from consumer beauty toward a science-backed medical aesthetics platform.' },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'American Med Spa Assoc.',
+    url:'https://www.americanmedspa.org/news/fda-warning-letter-to-texas-medical-spa-signals-increased-compliance-enforcement/',
+    title:'FDA Warning Letter to Texas Med Spa Signals Escalating Enforcement',
+    summary:'An FDA warning letter to a Texas medical spa over non-compliant injectable use signals that federal oversight of the aesthetic clinic sector is intensifying.' },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'MedEsthetics',
+    url:'https://www.medestheticsmag.com/research/injectables/news/22888523/medical-aesthetic-industry-projects-to-grow-14-annually-through-2026',
+    title:'Medical Aesthetics Industry Projected to Grow 14% Annually Through 2026',
+    summary:'Global medical aesthetics is forecast to expand 14% per year through 2026, fueled by strong demand for injectables, body contouring, and regenerative treatments.' },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'IAPAM',
+    url:'https://iapam.com/2026-aesthetic-medicine-trends',
+    title:"'Prejuvenation' and GLP-1 Body Contouring Define 2026 Aesthetic Trends",
+    summary:"Preventive anti-aging treatments ('prejuvenation'), GLP-1-combined body sculpting, and biostimulatory injectables are the defining aesthetic trends of 2026." },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'MedEsthetics',
+    url:'https://www.medestheticsmag.com/home/article/22957605/insideout-and-innovative-whats-trending-in-aesthetics-for-2026',
+    title:'Aesthetics Pivots to Holistic Inside-Out Regenerative Care in 2026',
+    summary:'The aesthetics industry is shifting away from correction-focused procedures toward personalized, inside-out regenerative protocols that blend wellness with technology.' },
 ];
 // @@NEWS_END@@
 
-// ── Read state via localStorage ───────────────────────────────
+// ── Read state ────────────────────────────────────────────────
 const STORE_KEY = 'digest_read_v1';
 function getRead() {
   try { return new Set(JSON.parse(localStorage.getItem(STORE_KEY) || '[]')); }
@@ -236,31 +364,46 @@ function toggleRead(id) {
   const s = getRead();
   s.has(id) ? s.delete(id) : s.add(id);
   saveRead(s);
-  const card = document.getElementById('c'+id);
-  if (!card) return;
   const isRead = s.has(id);
-  card.classList.toggle('is-read', isRead);
-  const btn  = card.querySelector('.mark-read-btn');
-  const hint = card.querySelector('.read-hint');
-  if (btn)  btn.textContent  = isRead ? '↩ Unmark' : '✓ Mark as read';
-  if (hint) hint.textContent = isRead ? 'Click to unmark' : 'Click to mark as read';
+  document.querySelectorAll('.nc-'+id).forEach(card => {
+    card.classList.toggle('is-read', isRead);
+    const btn  = card.querySelector('.mark-read-btn');
+    const hint = card.querySelector('.read-hint');
+    if (btn)  btn.textContent  = isRead ? '↩ Unmark' : '✓ Mark as read';
+    if (hint) hint.textContent = isRead ? 'Click to unmark' : 'Click to mark as read';
+  });
 }
 
-// ── Tabs ──────────────────────────────────────────────────────
-document.getElementById('tabBar').addEventListener('click', e => {
-  const t = e.target.closest('.tab'); if (!t) return;
-  const idx = t.dataset.tab;
-  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-  t.classList.add('active');
-  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
-  document.getElementById('panel-'+idx).classList.add('active');
-});
+// ── Favorites ─────────────────────────────────────────────────
+const FAVE_KEY = 'digest_faves_v1';
+function getFaves() {
+  try { return new Set(JSON.parse(localStorage.getItem(FAVE_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveFaves(s) {
+  try { localStorage.setItem(FAVE_KEY, JSON.stringify([...s])); } catch {}
+}
+function toggleFave(id, e) {
+  if (e) e.stopPropagation();
+  const s = getFaves();
+  s.has(id) ? s.delete(id) : s.add(id);
+  saveFaves(s);
+  const starred = s.has(id);
+  document.querySelectorAll(`.star-btn[data-id="${id}"]`).forEach(btn => {
+    btn.classList.toggle('starred', starred);
+    btn.textContent = starred ? '★' : '☆';
+    btn.title = starred ? 'Remove from favorites' : 'Add to favorites';
+  });
+  // Refresh favorites panel if open
+  const favPanel = document.getElementById('panel-4');
+  if (favPanel && favPanel.classList.contains('active')) renderFavorites();
+}
 
 // ── Date ──────────────────────────────────────────────────────
 document.getElementById('headerDate').textContent = new Date().toLocaleDateString(
   'en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
 
-// ── Render ────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
 function safeText(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -272,46 +415,136 @@ function ageClass(age) {
   }
   return 'age-old';
 }
-function buildCards(items) {
-  const readSet = getRead();
-  return '<div class="news-list">' + items.map(item => {
-    const isRead = readSet.has(item.id);
-    const ageBadge = item.age
-      ? `<span class="age-tag ${ageClass(item.age)}">${safeText(item.age)}</span>` : '';
-    return `
-      <div class="news-card${isRead?' is-read':''}" id="c${item.id}" onclick="toggleRead(${item.id})" style="cursor:pointer">
-        <div class="card-top">
-          <span class="cat-tag tag-${item.tag}">${item.cat}</span>
-          <span class="card-source">${safeText(item.src)}</span>
-          <span class="spacer"></span>
-          ${ageBadge}
-          <span class="read-dot">✓ Read</span>
-        </div>
-        <div class="card-title">
-          <a href="${safeText(item.url)}" target="_blank" rel="noopener noreferrer"
-             onclick="event.stopPropagation()">${safeText(item.title)}</a>
-        </div>
-        <div class="card-summary">${safeText(item.summary)}</div>
-        <div class="card-footer">
-          <button class="mark-read-btn" onclick="event.stopPropagation(); toggleRead(${item.id})">
-            ${isRead ? '↩ Unmark' : '✓ Mark as read'}
-          </button>
-          <a class="story-link" href="${safeText(item.url)}" target="_blank"
-             rel="noopener noreferrer" onclick="event.stopPropagation()">
-            Full story →
-          </a>
-        </div>
-        <div class="read-hint">${isRead ? 'Click to unmark' : 'Click to mark as read'}</div>
-      </div>`;
-  }).join('') + '</div>';
+function highlightKw(text, kws) {
+  let out = safeText(text);
+  kws.forEach(kw => {
+    if (!kw) return;
+    const re = new RegExp('(' + kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
+    out = out.replace(re, '<mark class="kw-match">$1</mark>');
+  });
+  return out;
 }
 
+// ── Card builder ──────────────────────────────────────────────
+function buildCard(item, kws) {
+  const isRead  = getRead().has(item.id);
+  const isFaved = getFaves().has(item.id);
+  const kw = kws || [];
+  const ageBadge = item.age
+    ? `<span class="age-tag ${ageClass(item.age)}">${safeText(item.age)}</span>` : '';
+  return `
+    <div class="news-card${isRead?' is-read':''} nc-${item.id}"
+         onclick="toggleRead(${item.id})" style="cursor:pointer">
+      <div class="card-top">
+        <span class="cat-tag tag-${item.tag}">${item.cat}</span>
+        <span class="card-source">${safeText(item.src)}</span>
+        <span class="spacer"></span>
+        ${ageBadge}
+        <span class="read-dot">✓ Read</span>
+        <button class="star-btn${isFaved?' starred':''}" data-id="${item.id}"
+                title="${isFaved?'Remove from favorites':'Add to favorites'}"
+                onclick="toggleFave(${item.id},event)">${isFaved?'★':'☆'}</button>
+      </div>
+      <div class="card-title">
+        <a href="${safeText(item.url)}" target="_blank" rel="noopener noreferrer"
+           onclick="event.stopPropagation()">${highlightKw(item.title, kw)}</a>
+      </div>
+      <div class="card-summary">${highlightKw(item.summary, kw)}</div>
+      <div class="card-footer">
+        <button class="mark-read-btn" onclick="event.stopPropagation(); toggleRead(${item.id})">
+          ${isRead ? '↩ Unmark' : '✓ Mark as read'}
+        </button>
+        <a class="story-link" href="${safeText(item.url)}" target="_blank"
+           rel="noopener noreferrer" onclick="event.stopPropagation()">
+          Full story →
+        </a>
+      </div>
+      <div class="read-hint">${isRead ? 'Click to unmark' : 'Click to mark as read'}</div>
+    </div>`;
+}
+
+function buildCards(items, kws) {
+  if (!items.length) return '<div class="no-results">No articles match your keywords.</div>';
+  return '<div class="news-list">' + items.map(it => buildCard(it, kws)).join('') + '</div>';
+}
+
+// ── Favorites panel ───────────────────────────────────────────
+function renderFavorites() {
+  const panel = document.getElementById('panel-4');
+  if (!panel) return;
+  const faveSet  = getFaves();
+  const favItems = NEWS.filter(n => faveSet.has(n.id));
+  if (!favItems.length) {
+    panel.innerHTML = `
+      <div class="faves-empty">
+        <div class="big-icon">⭐</div>
+        <p>No saved articles yet.<br>Click the ☆ on any article to save it here.</p>
+      </div>`;
+  } else {
+    panel.innerHTML = buildCards(favItems, []);
+  }
+}
+
+// ── Keyword filter ────────────────────────────────────────────
+let currentFilter = '';
+try { currentFilter = localStorage.getItem('digest_filter_v1') || ''; } catch {}
+
+function getKeywords() {
+  return currentFilter.split(/[\s,]+/).map(k => k.trim()).filter(k => k.length > 0);
+}
+
+function applyFilter() {
+  const kws = getKeywords();
+  for (const [p, items] of Object.entries(byPanel)) {
+    const filtered = kws.length
+      ? items.filter(it => {
+          const hay = (it.title + ' ' + it.summary + ' ' + it.cat + ' ' + it.src).toLowerCase();
+          return kws.some(kw => hay.includes(kw.toLowerCase()));
+        })
+      : items;
+    document.getElementById('panel-' + p).innerHTML = buildCards(filtered, kws);
+  }
+}
+
+const filterInput = document.getElementById('filterInput');
+const filterClear = document.getElementById('filterClear');
+if (filterInput) {
+  filterInput.value = currentFilter;
+  filterClear && filterClear.classList.toggle('visible', !!currentFilter);
+  filterInput.addEventListener('input', () => {
+    currentFilter = filterInput.value;
+    try { localStorage.setItem('digest_filter_v1', currentFilter); } catch {}
+    filterClear && filterClear.classList.toggle('visible', !!currentFilter);
+    applyFilter();
+  });
+}
+if (filterClear) {
+  filterClear.addEventListener('click', () => {
+    currentFilter = ''; filterInput.value = '';
+    try { localStorage.removeItem('digest_filter_v1'); } catch {}
+    filterClear.classList.remove('visible');
+    applyFilter();
+  });
+}
+
+// ── Tabs ──────────────────────────────────────────────────────
+document.getElementById('tabBar').addEventListener('click', e => {
+  const t = e.target.closest('.tab'); if (!t) return;
+  const idx = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  document.getElementById('panel-' + idx).classList.add('active');
+  const filterBar = document.getElementById('filterBar');
+  if (filterBar) filterBar.style.display = idx === '4' ? 'none' : '';
+  if (idx === '4') renderFavorites();
+});
+
+// ── Initial render ────────────────────────────────────────────
 NEWS.forEach((item, i) => item.id = i);
 const byPanel = {};
-NEWS.forEach(item => { (byPanel[item.p] = byPanel[item.p]||[]).push(item); });
-for (const [p, items] of Object.entries(byPanel)) {
-  document.getElementById('panel-'+p).innerHTML = buildCards(items);
-}
+NEWS.forEach(item => { (byPanel[item.p] = byPanel[item.p] || []).push(item); });
+applyFilter();
 </script>
 </body>
 </html>
