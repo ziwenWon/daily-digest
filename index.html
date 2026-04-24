@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Daily News Digest",
+  "schemaVersion": 1,
+  "description": "Daily news digest covering Tech & AI, Business & Finance, Biotech, and Medical Aesthetics — with one-sentence English summaries generated dynamically via sample() on each load."
+}
+</script>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Digest</title>
+  <style>
+    :root { color-scheme: light; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: #f4f4f6; color: #1a1a2e;
+    }
+
+    .header {
+      background: #fff; border-bottom: 1px solid #e5e7eb;
+      padding: 14px 24px; display: flex; align-items: center;
+      justify-content: space-between; position: sticky; top: 0; z-index: 20;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .logo { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: #111827; }
+    .badge {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 2px 7px; border-radius: 20px; background: #dcfce7; color: #15803d;
+    }
+    .header-date { font-size: 12.5px; color: #9ca3af; }
+
+    .tabs {
+      background: #fff; border-bottom: 1px solid #e5e7eb;
+      padding: 0 20px; display: flex; overflow-x: auto;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      display: flex; align-items: center; gap: 6px;
+      padding: 13px 16px; font-size: 13.5px; font-weight: 500;
+      color: #9ca3af; cursor: pointer; border-bottom: 2px solid transparent;
+      white-space: nowrap; transition: color 0.15s; user-select: none;
+    }
+    .tab:hover:not(.active) { color: #374151; }
+    .tab.active { color: #4f46e5; border-bottom-color: #4f46e5; }
+
+    .main { max-width: 820px; margin: 0 auto; padding: 20px 16px 48px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .news-list { display: flex; flex-direction: column; gap: 10px; }
+
+    /* ── Card ── */
+    .news-card {
+      background: #fff; border-radius: 12px; padding: 18px 20px 14px;
+      border: 1px solid #e5e7eb; cursor: pointer;
+      transition: box-shadow 0.18s, transform 0.12s, background 0.25s, opacity 0.25s;
+      position: relative;
+    }
+    .news-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,0.08); transform: translateY(-1px); }
+
+    /* Read state */
+    .news-card.is-read { background: #f9f9fb; opacity: 0.62; }
+    .news-card.is-read .card-title  { color: #adb5bd; }
+    .news-card.is-read .card-summary { color: #ced4da; }
+
+    /* Hover hint */
+    .read-hint {
+      position: absolute; bottom: 10px; left: 20px;
+      font-size: 10.5px; color: #d1d5db; pointer-events: none;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    .news-card:hover .read-hint { opacity: 1; }
+
+    .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+    .cat-tag {
+      font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px;
+      text-transform: uppercase; padding: 3px 8px; border-radius: 5px; flex-shrink: 0;
+    }
+    .tag-tech       { background: #eef2ff; color: #4338ca; }
+    .tag-business   { background: #ecfdf5; color: #065f46; }
+    .tag-biotech    { background: #faf5ff; color: #7e22ce; }
+    .tag-aesthetics { background: #fff1f2; color: #be123c; }
+
+    .card-source { font-size: 11.5px; color: #9ca3af; flex: 1; }
+    .read-dot { font-size: 11px; color: #adb5bd; display: none; }
+    .news-card.is-read .read-dot { display: inline; }
+
+    .card-title {
+      font-size: 14.5px; font-weight: 600; color: #111827;
+      line-height: 1.45; margin-bottom: 7px; transition: color 0.2s;
+    }
+    /* Real <a> tag for title — native browser navigation */
+    .title-link {
+      color: inherit; text-decoration: none;
+    }
+    .title-link:hover { color: #4f46e5; text-decoration: underline; }
+    .news-card.is-read .title-link:hover { color: #adb5bd; text-decoration: none; }
+
+    .card-summary {
+      font-size: 13px; color: #4b5563; line-height: 1.65;
+      min-height: 20px; transition: color 0.2s;
+    }
+    .shimmer {
+      height: 14px; width: 88%; border-radius: 4px;
+      background: linear-gradient(90deg,#f0f0f0 25%,#e4e4e4 50%,#f0f0f0 75%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite;
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    .card-footer {
+      display: flex; justify-content: flex-end; margin-top: 14px;
+    }
+    /* Real <a> tag for Full story — native browser navigation */
+    .story-link {
+      font-size: 12px; font-weight: 500; color: #6366f1;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 2px;
+    }
+    .story-link:hover { text-decoration: underline; }
+    .news-card.is-read .story-link { color: #adb5bd; }
+
+    /* Loading */
+    .section-loading {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px; padding: 60px 20px; color: #9ca3af; font-size: 13px;
+    }
+    .spinner {
+      width: 26px; height: 26px; border: 3px solid #e5e7eb;
+      border-top-color: #4f46e5; border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .update-bar {
+      text-align: center; font-size: 11.5px; color: #c4c4cc;
+      padding: 18px 0 4px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <span class="logo">📰 Daily Digest</span>
+    <span class="badge">LIVE</span>
+  </div>
+  <div class="header-date" id="headerDate">—</div>
+</div>
+
+<div class="tabs" id="tabBar">
+  <div class="tab active" data-tab="0">🤖 Tech &amp; AI</div>
+  <div class="tab" data-tab="1">📈 Business &amp; Finance</div>
+  <div class="tab" data-tab="2">🧬 Biotech</div>
+  <div class="tab" data-tab="3">✨ Med Aesthetics</div>
+</div>
+
+<div class="main">
+  <div id="panel-0" class="panel active"><div class="section-loading"><div class="spinner"></div><span>Generating summaries…</span></div></div>
+  <div id="panel-1" class="panel"><div class="section-loading"><div class="spinner"></div><span>Generating summaries…</span></div></div>
+  <div id="panel-2" class="panel"><div class="section-loading"><div class="spinner"></div><span>Generating summaries…</span></div></div>
+  <div id="panel-3" class="panel"><div class="section-loading"><div class="spinner"></div><span>Generating summaries…</span></div></div>
+  <div class="update-bar">Summaries regenerate on every reload · Click card body to mark as read</div>
+</div>
+
+<script>
+// ── Read state via URL hash ───────────────────────────────────
+function getRead() {
+  try {
+    const h = location.hash.replace('#','');
+    return new Set(h ? h.split(',').map(Number).filter(n => !isNaN(n)) : []);
+  } catch { return new Set(); }
+}
+function saveRead(s) {
+  try {
+    const v = [...s].join(',');
+    history.replaceState(null,'', v ? '#'+v : location.pathname+location.search);
+  } catch {}
+}
+function toggleRead(id) {
+  const s = getRead();
+  s.has(id) ? s.delete(id) : s.add(id);
+  saveRead(s);
+  const card = document.getElementById('c'+id);
+  if (card) {
+    card.classList.toggle('is-read', s.has(id));
+    const hint = card.querySelector('.read-hint');
+    if (hint) hint.textContent = s.has(id) ? 'Click to unmark' : 'Click to mark as read';
+  }
+}
+
+// ── Tabs ──────────────────────────────────────────────────────
+document.getElementById('tabBar').addEventListener('click', e => {
+  const t = e.target.closest('.tab'); if (!t) return;
+  const idx = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  document.getElementById('panel-'+idx).classList.add('active');
+});
+
+// ── Date ──────────────────────────────────────────────────────
+document.getElementById('headerDate').textContent = new Date().toLocaleDateString(
+  'en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+
+// ── News data ─────────────────────────────────────────────────
+const NEWS = [
+  {p:0,tag:'tech',cat:'Tech & AI',src:'SiliconANGLE',
+   url:'https://siliconangle.com/2026/04/22/google-unveils-new-tpus-power-next-wave-ai-training-inference/',
+   title:'Google Unveils TPU 8t & TPU 8i Chips at Cloud Next 2026',
+   raw:'Google unveiled eighth-generation TPU 8t (training) and TPU 8i (inference) chips at Cloud Next 2026, challenging Nvidia with custom AI silicon.'},
+  {p:0,tag:'tech',cat:'Tech & AI',src:'Fortune',
+   url:'https://fortune.com/2026/04/22/spacex-strikes-60-billion-deal-cursor/',
+   title:'SpaceX and Cursor Strike $60B AI Coding Deal',
+   raw:'SpaceX signed a $10B collaboration with Cursor AI for coding AI using its Colossus supercomputer, retaining an option to acquire Cursor for $60B later this year.'},
+  {p:0,tag:'tech',cat:'Tech & AI',src:'TechCrunch',
+   url:'https://techcrunch.com/2026/04/22/exclusive-google-deepens-thinking-machines-lab-ties-with-new-multi-billion-dollar-deal/',
+   title:"Google Deepens Ties with Mira Murati's Thinking Machines Lab",
+   raw:"Google signed a multibillion-dollar cloud deal with Mira Murati's Thinking Machines Lab, powered by Nvidia GB300 chips."},
+  {p:0,tag:'tech',cat:'Tech & AI',src:'UN News',
+   url:'https://news.un.org/en/story/2026/04/1167361',
+   title:'Geoffrey Hinton Urges AI Regulation at UN Conference',
+   raw:'Geoffrey Hinton warned at a UN summit that unregulated AI is "a very fast car with no steering wheel," calling for urgent international governance.'},
+  {p:0,tag:'tech',cat:'Tech & AI',src:'PwC',
+   url:'https://www.pwc.com/gx/en/news-room/press-releases/2026/pwc-2026-ai-performance-study.html',
+   title:'PwC: Top 20% of Companies Capture 75% of All AI Economic Gains',
+   raw:"PwC's 2026 AI Performance study found a narrow group of growth-focused firms pulling far ahead of peers in converting AI investments into financial returns."},
+
+  {p:1,tag:'business',cat:'Business',src:'WEF',
+   url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+   title:'IMF Cuts 2026 Global Growth Forecast to 3.1% on War Risk',
+   raw:'The IMF lowered its 2026 global growth outlook from 3.4% to 3.1%, citing Middle East conflict and fragile supply chains.'},
+  {p:1,tag:'business',cat:'Business',src:'CNBC',
+   url:'https://www.cnbc.com/2026/04/22/stock-market-today-live-updates.html',
+   title:'S&P 500 Falls 0.41% as Oil Tops $96 on Geopolitical Tensions',
+   raw:'U.S. equities fell April 23 with the S&P 500 off 0.41% and Nasdaq down 0.89% as Middle East tensions drove WTI crude above $96.50 per barrel.'},
+  {p:1,tag:'business',cat:'Business',src:'CNBC',
+   url:'https://www.cnbc.com/2026/04/22/stock-market-today-live-updates.html',
+   title:'Goldman Sachs Posts Best Quarter in Years on Trading Revenue',
+   raw:"Q1 2026 bank earnings were strong, with Goldman Sachs delivering its best quarter in years and Morgan Stanley surging on elevated trading volumes."},
+  {p:1,tag:'business',cat:'Business',src:'WEF',
+   url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+   title:'Brent Crude Crosses $105 as Middle East Conflict Escalates',
+   raw:'Brent crude jumped 3.5% above $105 per barrel and WTI neared $97 as intensifying Middle East conflict tightened global energy supply expectations.'},
+  {p:1,tag:'business',cat:'Business',src:'Financial Stability Board',
+   url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+   title:'FSB Warns Conflict Threatens Global Financial Stability',
+   raw:'The FSB flagged that Middle East warfare combined with stretched valuations and high non-bank leverage poses growing threats to global financial stability.'},
+
+  {p:2,tag:'biotech',cat:'Biotech',src:'BioPharma Dive',
+   url:'https://www.biopharmadive.com/news/tortugas-biotech-startup-jonas-robichaud-hansoh-eisai/818076/',
+   title:'Tortugas Neuroscience Launches with $106M and Brain Drug Pipeline',
+   raw:'Tortugas Neuroscience emerged from stealth April 21 with $106M, CEO Jeff Jonas, and two neurology drug candidates in-licensed from Hansoh and Eisai.'},
+  {p:2,tag:'biotech',cat:'Biotech',src:'AACR / Lambda',
+   url:'https://afs.lambda-bio.com/blog/top-biotech-news-22-april-2026/',
+   title:'Revolution Medicine Releases Phase 3 Data on Pancreatic Cancer Drug',
+   raw:"Revolution Medicine presented Phase 3 results for daraxonrasib at AACR 2026, a key milestone for its KRAS-targeting oncology pipeline."},
+  {p:2,tag:'biotech',cat:'Biotech',src:'Lambda Biologics',
+   url:'https://afs.lambda-bio.com/blog/top-biotech-news-22-april-2026/',
+   title:'BioNTech & DualityBio ADC Shows Efficacy in Endometrial Cancer',
+   raw:'Phase 1/2 data for trastuzumab pamirtecan showed significant activity in HER2-expressing recurrent endometrial cancer, validating the ADC treatment approach.'},
+  {p:2,tag:'biotech',cat:'Biotech',src:'Fierce Biotech',
+   url:'https://www.fiercebiotech.com/',
+   title:'Storm Therapeutics Raises $56M Series C for RNA Methylation Drug',
+   raw:'Storm Therapeutics secured $56M in Series C funding to advance STC-15, its METTL3 inhibitor, into mid-stage oncology clinical trials.'},
+  {p:2,tag:'biotech',cat:'Biotech',src:'Fierce Biotech',
+   url:'https://www.fiercebiotech.com/',
+   title:'Wave Life Sciences Advances RNA Editing in Obesity & Rare Disease',
+   raw:'Wave Life Sciences reported 2026 momentum in RNA editing and interference, expanding clinical scope into obesity and genetic rare diseases.'},
+
+  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'Yahoo Finance',
+   url:'https://finance.yahoo.com/sectors/healthcare/articles/beauty-health-company-announces-corporate-120000695.html',
+   title:'Beauty Health Co. Rebrands to SkinHealth Systems',
+   raw:"The Beauty Health Company rebranded as SkinHealth Systems Inc. on April 22, shifting from consumer beauty to a clinically driven medical aesthetics platform."},
+  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'American Med Spa Assoc.',
+   url:'https://www.americanmedspa.org/news/fda-warning-letter-to-texas-medical-spa-signals-increased-compliance-enforcement/',
+   title:'FDA Warning Letter Signals Stricter Med Spa Enforcement',
+   raw:'The FDA issued a formal warning to a Texas med spa over non-compliant injectable practices, signaling intensified federal oversight of aesthetic clinics.'},
+  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'MedEsthetics',
+   url:'https://www.medestheticsmag.com/research/injectables/news/22888523/medical-aesthetic-industry-projects-to-grow-14-annually-through-2026',
+   title:'Medical Aesthetics Market on Track for 14% Annual Growth',
+   raw:'The global medical aesthetics sector is projected to grow 14% annually through 2026, driven by rising demand for injectables, body contouring, and regenerative procedures.'},
+  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'IAPAM',
+   url:'https://iapam.com/2026-aesthetic-medicine-trends',
+   title:"'Prejuvenation' and GLP-1 Body Contouring Lead 2026 Trends",
+   raw:"Top 2026 aesthetics trends include preventive 'prejuvenation' anti-aging, GLP-1-combined body contouring, and surging biostimulatory injectable demand."},
+  {p:3,tag:'aesthetics',cat:'Med Aesthetics',src:'MedEsthetics',
+   url:'https://www.medestheticsmag.com/home/article/22957605/insideout-and-innovative-whats-trending-in-aesthetics-for-2026',
+   title:'Aesthetics Industry Pivots to Inside-Out Regenerative Care',
+   raw:'The 2026 aesthetics movement is shifting toward holistic inside-out regenerative protocols combining biocompatible technology and whole-body personalised wellness.'},
+];
+
+// ── Safely encode URL for HTML attribute ─────────────────────
+function safeUrl(url) {
+  return url.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function safeText(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Build card HTML with REAL <a> tags ───────────────────────
+function buildCards(items) {
+  const readSet = getRead();
+  return '<div class="news-list">' + items.map(item => {
+    const isRead = readSet.has(item.id);
+    const hurl = safeUrl(item.url);
+    return `
+      <div class="news-card${isRead ? ' is-read' : ''}" id="c${item.id}" onclick="toggleRead(${item.id})">
+        <div class="card-top">
+          <span class="cat-tag tag-${item.tag}">${item.cat}</span>
+          <span class="card-source">${safeText(item.src)}</span>
+          <span class="read-dot">✓ Read</span>
+        </div>
+        <div class="card-title">
+          <a class="title-link"
+             href="${hurl}"
+             target="_blank"
+             rel="noopener noreferrer"
+             onclick="event.stopPropagation()">${safeText(item.title)}</a>
+        </div>
+        <div class="card-summary" id="s${item.id}"><div class="shimmer"></div></div>
+        <div class="card-footer">
+          <a class="story-link"
+             href="${hurl}"
+             target="_blank"
+             rel="noopener noreferrer"
+             onclick="event.stopPropagation()">Full story →</a>
+        </div>
+        <div class="read-hint">${isRead ? 'Click to unmark' : 'Click to mark as read'}</div>
+      </div>
+    `;
+  }).join('') + '</div>';
+}
+
+NEWS.forEach((item, i) => item.id = i);
+const byPanel = {};
+NEWS.forEach(item => { (byPanel[item.p] = byPanel[item.p] || []).push(item); });
+for (const [p, items] of Object.entries(byPanel)) {
+  document.getElementById('panel-'+p).innerHTML = buildCards(items);
+}
+
+// ── Generate one-sentence summaries ──────────────────────────
+(async () => {
+  try {
+    const res = await window.cowork.sample(
+      'You are a sharp news editor. For each item in the input array, write exactly ONE sentence (15–22 words) summarizing the key fact. Be direct and informative. Return ONLY a valid JSON array of strings in the same order. No markdown, no extra text.',
+      NEWS.map(n => n.raw)
+    );
+    if (!res.isError) {
+      const m = res.text.match(/\[[\s\S]*\]/);
+      if (m) {
+        JSON.parse(m[0]).forEach((txt, i) => {
+          const el = document.getElementById('s'+i);
+          if (el) el.textContent = typeof txt === 'string' ? txt : (NEWS[i]||{}).raw||'';
+        });
+        return;
+      }
+    }
+    throw 0;
+  } catch {
+    NEWS.forEach(item => {
+      const el = document.getElementById('s'+item.id);
+      if (el) el.textContent = item.raw;
+    });
+  }
+})();
+</script>
+</body>
+</html>
