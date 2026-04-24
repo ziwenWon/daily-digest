@@ -1,251 +1,383 @@
-#!/usr/bin/env python3
-"""
-Daily News Digest Updater
-Fetches RSS feeds, filters by recency, injects fresh articles into index.html.
-Priority: last 7 days → last 30 days → any (fallback).
-"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Digest</title>
+  <style>
+    :root { color-scheme: light; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-import re
-import html as html_lib
-from datetime import datetime, timezone, timedelta
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: #f4f4f6;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
 
-try:
-    import feedparser
-except ImportError:
-    import subprocess, sys
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'feedparser'])
-    import feedparser
+    /* ── Header ── */
+    .header {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .logo { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: #111827; }
+    .badge {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.6px;
+      padding: 3px 8px; border-radius: 20px;
+      background: #dcfce7; color: #15803d;
+    }
+    .header-date { font-size: 13px; color: #9ca3af; }
 
-# ── Feed sources per category ─────────────────────────────────
-CATEGORIES = [
-    {
-        'p': 0, 'tag': 'tech', 'cat': 'Tech & AI',
-        'feeds': [
-            'https://techcrunch.com/feed/',
-            'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml',
-            'https://www.technologyreview.com/feed/',
-            'https://feeds.arstechnica.com/arstechnica/technology-lab',
-        ]
-    },
-    {
-        'p': 1, 'tag': 'business', 'cat': 'Business',
-        'feeds': [
-            'https://rss.nytimes.com/services/xml/rss/nyt/Business.xml',
-            'https://feeds.reuters.com/reuters/businessNews',
-            'https://www.cnbc.com/id/10001147/device/rss/rss.html',
-        ]
-    },
-    {
-        'p': 2, 'tag': 'biotech', 'cat': 'Biotech',
-        'feeds': [
-            'https://www.statnews.com/feed/',
-            'https://www.biopharmadive.com/feeds/news/',
-            'https://www.fiercebiotech.com/rss/xml',
-            'https://www.nature.com/subjects/biotechnology.rss',
-        ]
-    },
-    {
-        'p': 3, 'tag': 'aesthetics', 'cat': 'Med Aesthetics',
-        'feeds': [
-            'https://www.dermatologytimes.com/rss',
-            'https://www.medestheticsmag.com/rss',
-            'https://theindustry.beauty/feed/',
-            'https://www.plasticsurgery.org/rss.aspx',
-        ]
-    },
-]
+    /* ── Tabs ── */
+    .tabs {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 28px;
+      display: flex;
+      overflow-x: auto;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      display: flex; align-items: center; gap: 7px;
+      padding: 14px 18px;
+      font-size: 13.5px; font-weight: 500;
+      color: #9ca3af; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color 0.15s;
+      user-select: none;
+    }
+    .tab:hover:not(.active) { color: #374151; }
+    .tab.active { color: #4f46e5; border-bottom-color: #4f46e5; }
 
-# ── Date helpers ──────────────────────────────────────────────
-def get_entry_date(entry):
-    """Return UTC datetime from RSS entry, or None."""
-    for field in ('published_parsed', 'updated_parsed', 'created_parsed'):
-        t = getattr(entry, field, None)
-        if t:
-            try:
-                return datetime(*t[:6], tzinfo=timezone.utc)
-            except Exception:
-                pass
-    return None
+    /* ── Main ── */
+    .main { max-width: 860px; margin: 0 auto; padding: 24px 20px 60px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .news-list { display: flex; flex-direction: column; gap: 12px; }
 
-def format_date(dt):
-    """E.g. 'Apr 24' or 'Apr 24, 2025'."""
-    if dt is None:
-        return ''
-    now = datetime.now(timezone.utc)
-    if dt.year == now.year:
-        return dt.strftime('%-m/%-d')       # e.g. 4/24
-    return dt.strftime('%-m/%-d/%Y')        # e.g. 4/24/2025
+    /* ── Card ── */
+    .news-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 20px 22px 16px;
+      border: 1px solid #e5e7eb;
+      transition: box-shadow 0.2s, transform 0.12s, opacity 0.25s, background 0.25s;
+      position: relative;
+    }
+    .news-card:hover {
+      box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+      transform: translateY(-1px);
+    }
 
-def days_ago(dt):
-    if dt is None:
-        return 9999
-    return (datetime.now(timezone.utc) - dt).days
+    /* Read state */
+    .news-card.is-read {
+      background: #f9f9fb;
+      opacity: 0.55;
+    }
+    .news-card.is-read .card-title a { color: #adb5bd !important; }
+    .news-card.is-read .card-summary  { color: #ced4da; }
+    .news-card.is-read .story-link    { color: #ced4da !important; }
 
-# ── Text helpers ──────────────────────────────────────────────
-def strip_html(text, max_len=220):
-    text = re.sub(r'<[^>]+>', ' ', text or '')
-    text = html_lib.unescape(text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    if len(text) > max_len:
-        text = text[:max_len].rsplit(' ', 1)[0].rstrip('.,;:') + '…'
-    return text
+    .read-hint {
+      position: absolute; bottom: 10px; left: 22px;
+      font-size: 10.5px; color: #d1d5db;
+      pointer-events: none;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    .news-card:hover .read-hint { opacity: 1; }
 
-def js_escape(s):
-    return (str(s)
-            .replace('\\', '\\\\')
-            .replace("'", "\\'")
-            .replace('\n', ' ')
-            .replace('\r', '')
-            .replace('</', '<\\/'))
+    .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .cat-tag {
+      font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px;
+      text-transform: uppercase; padding: 3px 9px; border-radius: 6px; flex-shrink: 0;
+    }
+    .tag-tech       { background: #eef2ff; color: #4338ca; }
+    .tag-business   { background: #ecfdf5; color: #065f46; }
+    .tag-biotech    { background: #faf5ff; color: #7e22ce; }
+    .tag-aesthetics { background: #fff1f2; color: #be123c; }
 
-def source_name(feed, url):
-    name = getattr(feed.feed, 'title', None)
-    if not name:
-        name = re.sub(r'^www\.', '', url.split('/')[2])
-    return name[:50]
+    .card-source { font-size: 12px; color: #9ca3af; }
+    .age-tag {
+      font-size: 10.5px; font-weight: 600; padding: 2px 7px;
+      border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+    }
+    .age-fresh   { background: #dcfce7; color: #15803d; }   /* ≤ 7 days */
+    .age-recent  { background: #fef9c3; color: #854d0e; }   /* 8–30 days */
+    .age-old     { background: #f3f4f6; color: #9ca3af; }   /* > 30 days */
+    .spacer { flex: 1; }
+    .read-dot { font-size: 11px; color: #9ca3af; display: none; }
+    .news-card.is-read .read-dot { display: inline; }
 
-# ── Fetch all entries from a category's feeds ─────────────────
-def fetch_all_entries(cat):
-    """Return list of dicts with title/url/summary/src/date, sorted newest-first."""
-    entries = []
-    for feed_url in cat['feeds']:
-        try:
-            feed = feedparser.parse(
-                feed_url,
-                request_headers={'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)'}
-            )
-            src = source_name(feed, feed_url)
-            for entry in feed.entries:
-                title   = strip_html(entry.get('title', ''), 120)
-                url     = entry.get('link', '')
-                raw_sum = (entry.get('summary', '')
-                           or entry.get('description', '')
-                           or (entry.get('content') or [{}])[0].get('value', ''))
-                summary = strip_html(raw_sum, 220)
-                dt      = get_entry_date(entry)
-                if title and url:
-                    entries.append({
-                        'p':       cat['p'],
-                        'tag':     cat['tag'],
-                        'cat':     cat['cat'],
-                        'src':     src,
-                        'url':     url,
-                        'title':   title,
-                        'summary': summary or title,
-                        'dt':      dt,
-                        'date':    format_date(dt),
-                        'age':     days_ago(dt),
-                    })
-        except Exception as exc:
-            print(f'  ✗ {feed_url}: {exc}')
+    .card-title {
+      font-size: 15px; font-weight: 650; color: #111827;
+      line-height: 1.45; margin-bottom: 8px;
+    }
+    .card-title a {
+      color: #111827;
+      text-decoration: none;
+    }
+    .card-title a:hover { color: #4f46e5; text-decoration: underline; }
 
-    # Sort newest-first (unknown dates go last)
-    entries.sort(key=lambda e: e['dt'] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    return entries
+    .card-summary {
+      font-size: 13.5px; color: #4b5563;
+      line-height: 1.7; transition: color 0.2s;
+    }
 
-def pick_articles(entries, max_articles=5):
-    """
-    Tiered selection:
-      Tier 1: ≤ 7 days  (fresh news)
-      Tier 2: ≤ 30 days (still relevant)
-      Tier 3: any       (last-resort fallback)
-    Fill up to max_articles, tier-by-tier.
-    """
-    result = []
-    seen_urls = set()
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+    }
+    .mark-read-btn {
+      font-size: 11.5px; color: #9ca3af;
+      background: none; border: none; cursor: pointer;
+      padding: 4px 8px; border-radius: 6px;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+    .mark-read-btn:hover { background: #f3f4f6; color: #374151; }
+    .news-card.is-read .mark-read-btn { color: #4f46e5; }
 
-    def add(e):
-        if e['url'] not in seen_urls:
-            seen_urls.add(e['url'])
-            result.append(e)
+    .story-link {
+      font-size: 13px; font-weight: 600; color: #4f46e5;
+      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 14px;
+      background: #eef2ff;
+      border-radius: 8px;
+      transition: background 0.15s;
+    }
+    .story-link:hover { background: #e0e7ff; text-decoration: none; }
 
-    for tier_days in (7, 30, 3650):
-        for e in entries:
-            if len(result) >= max_articles:
-                break
-            if e['age'] <= tier_days:
-                add(e)
-        if len(result) >= max_articles:
-            break
+    /* ── Footer bar ── */
+    .update-bar {
+      text-align: center; font-size: 11.5px; color: #c4c4cc;
+      padding: 20px 0 4px;
+    }
+    .update-bar a { color: #9ca3af; }
+  </style>
+</head>
+<body>
 
-    return result[:max_articles]
+<div class="header">
+  <div class="header-left">
+    <span class="logo">📰 Daily Digest</span>
+    <span class="badge">LIVE</span>
+  </div>
+  <div class="header-date" id="headerDate">—</div>
+</div>
 
-# ── Inject into index.html ────────────────────────────────────
-def build_news_js(all_news, today_str):
-    lines = [f"  // Last updated: {today_str}"]
-    for item in all_news:
-        age_label = ''
-        if item['age'] == 0:
-            age_label = 'Today'
-        elif item['age'] == 1:
-            age_label = 'Yesterday'
-        elif item['age'] <= 7:
-            age_label = f"{item['age']}d ago"
-        elif item['date']:
-            age_label = item['date']
+<div class="tabs" id="tabBar">
+  <div class="tab active" data-tab="0">🤖 Tech &amp; AI</div>
+  <div class="tab" data-tab="1">📈 Business &amp; Finance</div>
+  <div class="tab" data-tab="2">🧬 Biotech</div>
+  <div class="tab" data-tab="3">✨ Med Aesthetics</div>
+</div>
 
-        lines.append(
-            f"  {{p:{item['p']},tag:'{js_escape(item['tag'])}',cat:'{js_escape(item['cat'])}',src:'{js_escape(item['src'])}',"
-            f"url:'{js_escape(item['url'])}',"
-            f"title:'{js_escape(item['title'])}',"
-            f"summary:'{js_escape(item['summary'])}',"
-            f"age:'{js_escape(age_label)}'}},"
-        )
-    return '\n'.join(lines)
+<div class="main">
+  <div id="panel-0" class="panel active"></div>
+  <div id="panel-1" class="panel"></div>
+  <div id="panel-2" class="panel"></div>
+  <div id="panel-3" class="panel"></div>
+  <div class="update-bar">
+    Last updated: <span id="lastUpdated">April 24, 2026</span>
+    &nbsp;·&nbsp; Click a card to mark as read
+  </div>
+</div>
 
-def update_html(all_news, today_str):
-    with open('index.html', 'r', encoding='utf-8') as f:
-        content = f.read()
+<script>
+// @@NEWS_START@@
+const NEWS = [
+  // Tech & AI
+  { p:0, tag:'tech', cat:'Tech & AI', src:'SiliconANGLE',
+    url:'https://siliconangle.com/2026/04/22/google-unveils-new-tpus-power-next-wave-ai-training-inference/',
+    title:'Google Unveils TPU 8t & TPU 8i Chips at Cloud Next 2026',
+    summary:"Google's new eighth-generation TPU 8t and TPU 8i chips target AI training and inference, mounting a direct challenge to Nvidia's dominance." },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'Fortune',
+    url:'https://fortune.com/2026/04/22/spacex-strikes-60-billion-deal-cursor/',
+    title:'SpaceX and Cursor Strike $60B AI Coding Deal',
+    summary:'SpaceX and Cursor signed a $10B AI coding collaboration using the Colossus supercomputer, with SpaceX retaining a $60B acquisition option.' },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'TechCrunch',
+    url:'https://techcrunch.com/2026/04/22/exclusive-google-deepens-thinking-machines-lab-ties-with-new-multi-billion-dollar-deal/',
+    title:"Google Signs Multibillion-Dollar Deal with Mira Murati's Thinking Machines Lab",
+    summary:"Google deepened its AI infrastructure bet with a multibillion-dollar cloud deal with Mira Murati's Thinking Machines Lab, powered by Nvidia GB300 chips." },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'UN News',
+    url:'https://news.un.org/en/story/2026/04/1167361',
+    title:'Geoffrey Hinton Calls for Urgent AI Regulation at UN Summit',
+    summary:'Nobel laureate Geoffrey Hinton warned at a UN conference that AI without governance is a "very fast car with no steering wheel," urging immediate action.' },
+  { p:0, tag:'tech', cat:'Tech & AI', src:'PwC',
+    url:'https://www.pwc.com/gx/en/news-room/press-releases/2026/pwc-2026-ai-performance-study.html',
+    title:'PwC: Just 20% of Companies Are Capturing 75% of AI Economic Gains',
+    summary:"PwC's 2026 study found a narrow group of growth-focused firms pulling far ahead of peers in converting AI investment into measurable financial returns." },
 
-    news_js  = build_news_js(all_news, today_str)
-    new_block = f'// @@NEWS_START@@\nconst NEWS = [\n{news_js}\n];\n// @@NEWS_END@@'
-    pattern   = r'// @@NEWS_START@@.*?// @@NEWS_END@@'
-    new_content = re.sub(pattern, new_block, content, flags=re.DOTALL)
+  // Business & Finance
+  { p:1, tag:'business', cat:'Business', src:'WEF',
+    url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+    title:'IMF Cuts 2026 Global Growth Forecast to 3.1% Over War Risks',
+    summary:'The IMF trimmed its 2026 global growth forecast from 3.4% to 3.1%, blaming Middle East conflict and persistent supply chain fragility.' },
+  { p:1, tag:'business', cat:'Business', src:'CNBC',
+    url:'https://www.cnbc.com/2026/04/22/stock-market-today-live-updates.html',
+    title:'S&P 500 Slips 0.41%; Oil Surges Above $96 on Middle East Tensions',
+    summary:'U.S. stocks retreated April 23 with the S&P 500 off 0.41% and Nasdaq down 0.89% as geopolitical tension pushed WTI crude above $96.50.' },
+  { p:1, tag:'business', cat:'Business', src:'CNBC',
+    url:'https://www.cnbc.com/2026/04/22/stock-market-today-live-updates.html',
+    title:'Goldman Sachs Delivers Its Best Quarter in Years on Trading Surge',
+    summary:'Major U.S. banks reported strong Q1 2026 results, led by Goldman Sachs posting its best quarter in years and Morgan Stanley surging on trading revenue.' },
+  { p:1, tag:'business', cat:'Business', src:'WEF',
+    url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+    title:'Brent Crude Tops $105 as Middle East Conflict Tightens Energy Markets',
+    summary:'Brent crude surged 3.5% above $105 per barrel as intensifying Middle East conflict compressed global energy supply and stoked inflation fears.' },
+  { p:1, tag:'business', cat:'Business', src:'Financial Stability Board',
+    url:'https://www.weforum.org/stories/2026/04/imf-downgrades-global-growth-and-other-finance-news-to-know/',
+    title:'FSB Warns Geopolitical Conflict Poses Serious Financial Stability Risk',
+    summary:'The FSB flagged that Middle East warfare, stretched asset valuations, and elevated non-bank leverage together pose a growing systemic threat.' },
 
-    if new_content == content:
-        print('⚠️  Markers not found — index.html not updated')
-        return False
+  // Biotech
+  { p:2, tag:'biotech', cat:'Biotech', src:'BioPharma Dive',
+    url:'https://www.biopharmadive.com/news/tortugas-biotech-startup-jonas-robichaud-hansoh-eisai/818076/',
+    title:'Tortugas Neuroscience Launches from Stealth with $106M',
+    summary:'Tortugas Neuroscience debuted with $106M in funding and CEO Jeff Jonas, bringing two brain-targeted drug candidates in-licensed from Hansoh and Eisai.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Lambda Biologics',
+    url:'https://afs.lambda-bio.com/blog/top-biotech-news-22-april-2026/',
+    title:'Revolution Medicine Presents Phase 3 Data on Pancreatic Cancer Drug Daraxonrasib',
+    summary:'Revolution Medicine presented pivotal Phase 3 results for its KRAS inhibitor daraxonrasib at AACR 2026, advancing its pancreatic cancer pipeline.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Lambda Biologics',
+    url:'https://afs.lambda-bio.com/blog/top-biotech-news-22-april-2026/',
+    title:'BioNTech & DualityBio ADC Shows Strong Efficacy in Endometrial Cancer',
+    summary:'Updated Phase 1/2 data showed trastuzumab pamirtecan achieving significant clinical activity in HER2-expressing recurrent endometrial cancer patients.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Fierce Biotech',
+    url:'https://www.fiercebiotech.com/',
+    title:'Storm Therapeutics Closes $56M Series C for METTL3 Inhibitor STC-15',
+    summary:'Storm Therapeutics raised $56M in Series C funding to advance STC-15, its first-in-class RNA methylation inhibitor, into mid-stage cancer trials.' },
+  { p:2, tag:'biotech', cat:'Biotech', src:'Fierce Biotech',
+    url:'https://www.fiercebiotech.com/',
+    title:'Wave Life Sciences Expands RNA Editing Pipeline into Obesity and Rare Disease',
+    summary:'Wave Life Sciences reported 2026 pipeline progress, extending its RNA editing and interference platform into obesity and new genetic rare disease programs.' },
 
-    new_content = re.sub(
-        r'(<span id="lastUpdated">)[^<]*(</span>)',
-        rf'\g<1>{today_str}\g<2>',
-        new_content
-    )
+  // Medical Aesthetics
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'Yahoo Finance',
+    url:'https://finance.yahoo.com/sectors/healthcare/articles/beauty-health-company-announces-corporate-120000695.html',
+    title:'Beauty Health Company Rebrands as SkinHealth Systems',
+    summary:'The Beauty Health Company rebranded as SkinHealth Systems Inc., repositioning itself from consumer beauty toward a science-backed medical aesthetics platform.' },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'American Med Spa Assoc.',
+    url:'https://www.americanmedspa.org/news/fda-warning-letter-to-texas-medical-spa-signals-increased-compliance-enforcement/',
+    title:'FDA Warning Letter to Texas Med Spa Signals Escalating Enforcement',
+    summary:'An FDA warning letter to a Texas medical spa over non-compliant injectable use signals that federal oversight of the aesthetic clinic sector is intensifying.' },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'MedEsthetics',
+    url:'https://www.medestheticsmag.com/research/injectables/news/22888523/medical-aesthetic-industry-projects-to-grow-14-annually-through-2026',
+    title:'Medical Aesthetics Industry Projected to Grow 14% Annually Through 2026',
+    summary:'Global medical aesthetics is forecast to expand 14% per year through 2026, fueled by strong demand for injectables, body contouring, and regenerative treatments.' },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'IAPAM',
+    url:'https://iapam.com/2026-aesthetic-medicine-trends',
+    title:"'Prejuvenation' and GLP-1 Body Contouring Define 2026 Aesthetic Trends",
+    summary:"Preventive anti-aging treatments ('prejuvenation'), GLP-1-combined body sculpting, and biostimulatory injectables are the defining aesthetic trends of 2026." },
+  { p:3, tag:'aesthetics', cat:'Med Aesthetics', src:'MedEsthetics',
+    url:'https://www.medestheticsmag.com/home/article/22957605/insideout-and-innovative-whats-trending-in-aesthetics-for-2026',
+    title:'Aesthetics Pivots to Holistic Inside-Out Regenerative Care in 2026',
+    summary:'The aesthetics industry is shifting away from correction-focused procedures toward personalized, inside-out regenerative protocols that blend wellness with technology.' },
+];
+// @@NEWS_END@@
 
-    with open('index.html', 'w', encoding='utf-8') as f:
-        f.write(new_content)
-    return True
+// ── Read state via localStorage ───────────────────────────────
+const STORE_KEY = 'digest_read_v1';
+function getRead() {
+  try { return new Set(JSON.parse(localStorage.getItem(STORE_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveRead(s) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify([...s])); } catch {}
+}
+function toggleRead(id) {
+  const s = getRead();
+  s.has(id) ? s.delete(id) : s.add(id);
+  saveRead(s);
+  const card = document.getElementById('c'+id);
+  if (!card) return;
+  const isRead = s.has(id);
+  card.classList.toggle('is-read', isRead);
+  const btn  = card.querySelector('.mark-read-btn');
+  const hint = card.querySelector('.read-hint');
+  if (btn)  btn.textContent  = isRead ? '↩ Unmark' : '✓ Mark as read';
+  if (hint) hint.textContent = isRead ? 'Click to unmark' : 'Click to mark as read';
+}
 
-# ── Main ──────────────────────────────────────────────────────
-def main():
-    today_str = datetime.utcnow().strftime('%B %d, %Y')
-    print(f'📰 Daily Digest Update — {today_str}\n')
+// ── Tabs ──────────────────────────────────────────────────────
+document.getElementById('tabBar').addEventListener('click', e => {
+  const t = e.target.closest('.tab'); if (!t) return;
+  const idx = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  document.getElementById('panel-'+idx).classList.add('active');
+});
 
-    all_news = []
-    for cat in CATEGORIES:
-        print(f'Fetching {cat["cat"]}…')
-        entries  = fetch_all_entries(cat)
-        articles = pick_articles(entries)
+// ── Date ──────────────────────────────────────────────────────
+document.getElementById('headerDate').textContent = new Date().toLocaleDateString(
+  'en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
 
-        # Log freshness for transparency
-        for a in articles:
-            flag = '🟢' if a['age'] <= 7 else ('🟡' if a['age'] <= 30 else '🔴')
-            print(f'  {flag} [{a["age"]:>3}d] {a["title"][:60]}')
+// ── Render ────────────────────────────────────────────────────
+function safeText(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function ageClass(age) {
+  if (!age) return '';
+  if (age === 'Today' || age === 'Yesterday' || age.includes('d ago')) {
+    const n = age === 'Today' ? 0 : age === 'Yesterday' ? 1 : parseInt(age);
+    return n <= 7 ? 'age-fresh' : 'age-recent';
+  }
+  return 'age-old';
+}
+function buildCards(items) {
+  const readSet = getRead();
+  return '<div class="news-list">' + items.map(item => {
+    const isRead = readSet.has(item.id);
+    const ageBadge = item.age
+      ? `<span class="age-tag ${ageClass(item.age)}">${safeText(item.age)}</span>` : '';
+    return `
+      <div class="news-card${isRead?' is-read':''}" id="c${item.id}" onclick="toggleRead(${item.id})" style="cursor:pointer">
+        <div class="card-top">
+          <span class="cat-tag tag-${item.tag}">${item.cat}</span>
+          <span class="card-source">${safeText(item.src)}</span>
+          <span class="spacer"></span>
+          ${ageBadge}
+          <span class="read-dot">✓ Read</span>
+        </div>
+        <div class="card-title">
+          <a href="${safeText(item.url)}" target="_blank" rel="noopener noreferrer"
+             onclick="event.stopPropagation()">${safeText(item.title)}</a>
+        </div>
+        <div class="card-summary">${safeText(item.summary)}</div>
+        <div class="card-footer">
+          <button class="mark-read-btn" onclick="event.stopPropagation(); toggleRead(${item.id})">
+            ${isRead ? '↩ Unmark' : '✓ Mark as read'}
+          </button>
+          <a class="story-link" href="${safeText(item.url)}" target="_blank"
+             rel="noopener noreferrer" onclick="event.stopPropagation()">
+            Full story →
+          </a>
+        </div>
+        <div class="read-hint">${isRead ? 'Click to unmark' : 'Click to mark as read'}</div>
+      </div>`;
+  }).join('') + '</div>';
+}
 
-        all_news.extend(articles)
-
-    if not all_news:
-        print('\n❌ No articles fetched. Skipping update.')
-        return
-
-    fresh   = sum(1 for a in all_news if a['age'] <= 7)
-    stale   = sum(1 for a in all_news if a['age'] > 30)
-    print(f'\nTotal: {len(all_news)} articles  |  🟢 ≤7d: {fresh}  |  🔴 >30d: {stale}')
-
-    if update_html(all_news, today_str):
-        print('✅ index.html updated successfully')
-    else:
-        print('❌ Failed to update index.html')
-
-if __name__ == '__main__':
-    main()
+NEWS.forEach((item, i) => item.id = i);
+const byPanel = {};
+NEWS.forEach(item => { (byPanel[item.p] = byPanel[item.p]||[]).push(item); });
+for (const [p, items] of Object.entries(byPanel)) {
+  document.getElementById('panel-'+p).innerHTML = buildCards(items);
+}
+</script>
+</body>
+</html>
